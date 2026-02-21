@@ -1,0 +1,6 @@
+@TutorBot.Webhook_HostAddress = http://localhost:5133
+
+GET {{TutorBot.Webhook_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
