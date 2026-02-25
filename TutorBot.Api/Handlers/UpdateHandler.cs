@@ -14,6 +14,12 @@ public class UpdateHandler: IUpdateHandler
     private readonly MessageHandler _messageHandler;
     private readonly CallbackQueryHandler _callbackHandler;
     
+    /// <summary>
+    /// Инициализирует новый экземпляр <see cref="UpdateHandler"/>.
+    /// </summary>
+    /// <param name="logger">Логгер для входящих обновлений.</param>
+    /// <param name="messageHandler">Обработчик сообщений.</param>
+    /// <param name="callbackHandler">Обработчик callback-запросов.</param>
     public UpdateHandler(ILogger<UpdateHandler> logger, MessageHandler messageHandler, CallbackQueryHandler callbackHandler)
     {
         _logger = logger;
@@ -21,6 +27,13 @@ public class UpdateHandler: IUpdateHandler
         _callbackHandler = callbackHandler;
     }
     
+    /// <summary>
+    /// Обрабатывает любое обновление, перенаправляя его в соответствующий дочерний обработчик
+    /// в зависимости от <see cref="Update.Type"/>.
+    /// </summary>
+    /// <param name="botClient">Клиент Telegram‑бота.</param>
+    /// <param name="update">Объект обновления.</param>
+    /// <param name="cancellationToken">Токен отмены.</param>
     public async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
     {
         try

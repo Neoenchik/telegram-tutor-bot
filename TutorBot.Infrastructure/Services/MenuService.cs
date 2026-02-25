@@ -3,8 +3,15 @@ using TutorBot.Domain.Entities;
 
 namespace TutorBot.Infrastructure.Services;
 
+/// <summary>
+/// Реализация <see cref="IMenuService"/>, формирует клавиатуры для взаимодействия с пользователем.
+/// </summary>
 public class MenuService : IMenuService
 {
+    /// <summary>
+    /// Формирует клавиатуру главного меню в зависимости от роли пользователя (админ/ученик).
+    /// </summary>
+    /// <param name="user">Пользователь, для которого строится меню.</param>
     public ReplyKeyboardMarkup GetMainMenuKeyboard(User user)
     {
         var buttons = new List<KeyboardButton[]>();
@@ -36,6 +43,9 @@ public class MenuService : IMenuService
         };
     }
 
+    /// <summary>
+    /// Возвращает клавиатуру с одной кнопкой для перехода к заполнению профиля.
+    /// </summary>
     public ReplyKeyboardMarkup GetProfileKeyboard()
     {
         return new ReplyKeyboardMarkup(new[]
@@ -48,6 +58,11 @@ public class MenuService : IMenuService
         };
     }
 
+    /// <summary>
+    /// Создаёт клавиатуру-календарь для выбора даты с callback-данными.
+    /// </summary>
+    /// <param name="start">Дата начала периода (UTC).</param>
+    /// <param name="days">Количество дней, отображаемых в календаре.</param>
     public InlineKeyboardMarkup GetCalendarKeyboard(DateTime start, int days)
     {
         var buttons = new List<InlineKeyboardButton[]>();
@@ -77,6 +92,10 @@ public class MenuService : IMenuService
         return new InlineKeyboardMarkup(buttons);
     }
 
+    /// <summary>
+    /// Формирует клавиатуру с доступными временными слотами для указанной даты.
+    /// </summary>
+    /// <param name="selectedDate">Дата, для которой требуются временные кнопки.</param>
     public InlineKeyboardMarkup GetTimesKeyboard(DateTime selectedDate)
     {
         var buttons = new List<InlineKeyboardButton[]>();

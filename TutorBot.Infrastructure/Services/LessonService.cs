@@ -13,8 +13,19 @@ public class LessonService
         _db = db;
     }
 
-    public async Task<Lesson> CreatePendingLessonAsync(long studentId, DateTime startUtc)
+    public async Task<(bool Success, string? Error,Lesson? lesson)> CreatePendingLessonAsync(long studentId, DateTime startUtc, CancellationToken ct = default)
     {
+        //првоерка, нет ли уже подтвержденного занятия
+        var conflict = await  _db.Lessons.AnyAsync(l=> 
+            (l.StartDateTime == startUtc 
+            && l.Status == LessonStatus.Pending),
+            cancellationToken: ct);
+
+        if (conflict)
+        {
+            return (false, "Этот слот уже занят и подтвержден", null);
+        }
+        
         var lesson = new Lesson
         {
             StudentTelegramId =  studentId,
@@ -22,8 +33,8 @@ public class LessonService
         };
         
         _db.Lessons.Add(lesson);
-        await _db.SaveChangesAsync();
-        return lesson;
+        await _db.SaveChangesAsync(ct);
+        return (true, null, lesson);
     }
     
     public async Task UpdateStatusAsync(Guid lessonId, LessonStatus newStatus)

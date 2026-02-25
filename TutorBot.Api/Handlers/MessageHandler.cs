@@ -16,6 +16,12 @@ public class MessageHandler
     private readonly UserService _userService;
     private readonly IMenuService _menuService;
 
+    /// <summary>
+    /// Создаёт новый экземпляр <see cref="MessageHandler"/>.
+    /// </summary>
+    /// <param name="logger">Логгер для записи информации и ошибок.</param>
+    /// <param name="userService">Сервис для работы с пользователями.</param>
+    /// <param name="menuService">Сервис для построения клавиатур.</param>
     public MessageHandler(ILogger<MessageHandler> logger,
                           UserService userService,
                           IMenuService menuService)
@@ -25,6 +31,12 @@ public class MessageHandler
         _menuService = menuService;
     }
 
+    /// <summary>
+    /// Обрабатывает входящее текстовое сообщение от пользователя и выполняет соответствующее действие.
+    /// </summary>
+    /// <param name="botClient">Клиент Telegram‑бота.</param>
+    /// <param name="message">Полученное сообщение.</param>
+    /// <param name="ct">Токен отмены.</param>
     public async Task HandleAsync(ITelegramBotClient botClient, Message message, CancellationToken ct)
     {
         if(message.Text is null) return;

@@ -1,11 +1,18 @@
+using System.Globalization;
+using System.Runtime.InteropServices.JavaScript;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.ReplyMarkups;
 using TutorBot.Domain.Entities;
 using TutorBot.Infrastructure.Services;
+using TutorBot.Infrastructure.Extensions;
 
 namespace TutorBot.Webhook.Handlers;
 
+/// <summary>
+/// Обрабатывает callback-запросы от inline-кнопок Telegram (клики по клавиатуре).
+/// Логика маршрутизации зависит от содержимого <see cref="CallbackQuery.Data"/>.
+/// </summary>
 public class CallbackQueryHandler
 {
     private readonly ILogger<CallbackQueryHandler> _logger;
@@ -14,6 +21,14 @@ public class CallbackQueryHandler
     private readonly LessonService _lessonService;
     private IConfiguration _config;
 
+    /// <summary>
+    /// Инициализирует новый экземпляр <see cref="CallbackQueryHandler"/>.
+    /// </summary>
+    /// <param name="logger">Логгер для записи информации и ошибок.</param>
+    /// <param name="userService">Сервис для управления пользователями.</param>
+    /// <param name="menuService">Сервис построения меню.</param>
+    /// <param name="lessonService">Сервис управления уроками.</param>
+    /// <param name="config">Конфигурация приложения.</param>
     public CallbackQueryHandler(ILogger<CallbackQueryHandler> logger,
                                 UserService userService,
                                 IMenuService menuService, LessonService lessonService, IConfiguration config)
@@ -25,6 +40,13 @@ public class CallbackQueryHandler
         _config = config;
     }
 
+    /// <summary>
+    /// Выполняет основную логику обработки <see cref="CallbackQuery"/>,
+    /// переключаясь в зависимости от <see cref="CallbackQuery.Data"/>.
+    /// </summary>
+    /// <param name="bot">Клиент Telegram‑бота.</param>
+    /// <param name="query">Объект callback-запроса.</param>
+    /// <param name="ct">Токен отмены операции.</param>
     public async Task HandleAsync(ITelegramBotClient bot, CallbackQuery query, CancellationToken ct)
     {
         if (query.Data is null)
@@ -38,52 +60,68 @@ public class CallbackQueryHandler
         
         //пример обработки
         if (query.Data == "confirm_booking")
-        {
+        {   
             if (user.State != ConversationState.ConfirmingBooking
                 || string.IsNullOrEmpty(user.StateData))
             {
-                await bot.AnswerCallbackQuery(query.Id, "Ошибка состояния!", true, cancellationToken: ct);
+                await bot.AnswerCallbackQuery(query.Id, "Сессия устарела!", true, cancellationToken: ct);
+                await _userService.ClearStateAsync(user.Id);
                 return;
             }
-            
-            var selectedDt =  DateTime.Parse(user.StateData);
-            
-            var lesson = _lessonService.CreatePendingLessonAsync(user.Id, selectedDt);
+
+            if (!DateTime.TryParse(user.StateData, null, DateTimeStyles.RoundtripKind, out var selectedDt))
+            {
+                await bot.AnswerCallbackQuery(query.Id, "Ошибка даты!", true, cancellationToken: ct);
+            }
+                
+            var (success, error,lesson) = await _lessonService.CreatePendingLessonAsync(user.Id, selectedDt, ct);
             await _userService.ClearStateAsync(user.Id);
+
+            if (!success)
+            {
+                await bot.SendMessage(
+                    query.Message!.Chat.Id,
+                    $"К сожалению, {error}\nПопробуйте выбрать другое время.",
+                    replyMarkup: _menuService.GetMainMenuKeyboard(user), 
+                    cancellationToken: ct);
+                await bot.AnswerCallbackQuery(query.Id, "Слот занят", true, cancellationToken: ct);
+            }
             
             await bot.SendMessage(
                 query.Message!.Chat.Id,
-                "Заявка отправлена репетитору. Ждите подтверждения",
+                "Заявка отправлена репетитору. Как только он подтвердит — придёт уведомление.",
                 replyMarkup: _menuService.GetMainMenuKeyboard(user), // возвращаем в главное меню
                 cancellationToken: ct);
             
             var adminId = long.Parse(_config["Telegram:AdminId"] ?? "0");
             if (adminId != 0)
             {
+                var mskTime = selectedDt.ToTimeZone("Europe/Moscow");
                 var adminKeyboard = new InlineKeyboardMarkup(new[]
                 {
                     new[]
                     {
-                        InlineKeyboardButton.WithCallbackData("✅ Подтвердить", $"admin_confirm:{lesson.Id}"),
-                        InlineKeyboardButton.WithCallbackData("❌ Отклонить", $"admin_decline:{lesson.Id}"),
-                        InlineKeyboardButton.WithCallbackData("✏️ Предложить другое", $"admin_propose:{lesson.Id}")
+                        InlineKeyboardButton.WithCallbackData("✅ Подтвердить", $"confirm_lesson:{lesson.Id}"),
+                        InlineKeyboardButton.WithCallbackData("❌ Отклонить", $"decline_lesson:{lesson.Id}"),
+                        InlineKeyboardButton.WithCallbackData("✏️ Предложить другое", $"propose_lesson:{lesson.Id}")
                     }
                 });
                 
                 await bot.SendMessage(
                     adminId,
                     $"Новая заявка от {user.DisplayName ?? user.FirstName}:\n" +
-                    $"Дата/время: {selectedDt:dd MMMM yyyy HH:mm} (UTC)\n" +
-                    $"Ученик ID: {user.Id}",
+                    $"Дата/время MSK: {mskTime:dd MMMM yyyy HH:mm}\n" +
+                    $"Ученик ID: {user.Id}" +
+                    $"Telegram ID: {user.Id}",
                     replyMarkup: adminKeyboard,
                     cancellationToken: ct);
             }
             
             await bot.AnswerCallbackQuery(query.Id, "Заявка создана", cancellationToken: ct);
         }
-        else if (query.Data.StartsWith("admin_confirm:"))
+        else if (query.Data.StartsWith("confirm_lesson:"))
         {
-            var lessonId = Guid.Parse(query.Data["admin_confirm".Length..]);
+            var lessonId = Guid.Parse(query.Data["confirm_lesson:".Length..]);
             var lesson = await _lessonService.GetLessonByIdAsync(lessonId);
 
             if (lesson is null || !_userService.IsAdmin(user))
@@ -96,7 +134,10 @@ public class CallbackQueryHandler
             
             await bot.SendMessage(
                 lesson.StudentTelegramId,
-                $"Ваша запись подтверждена!\nДата/время: {lesson.StartDateTime:dd MMMM yyyy HH:mm}",
+                $"Ваша запись подтверждена!\n\n" +
+                $"Дата/время: {lesson.StartDateTime:dd MMMM yyyy HH:mm}" +
+                $"Длительность: 60 минут",
+                replyMarkup: _menuService.GetMainMenuKeyboard(await _userService.GetOrCreateUserAsync(lesson.StudentTelegramId, null, null, null)),
                 cancellationToken: ct);
 
             await bot.AnswerCallbackQuery(query.Id, "Подтверждено",cancellationToken: ct);
@@ -104,12 +145,15 @@ public class CallbackQueryHandler
             await bot.EditMessageReplyMarkup(
                 query.Message!.Chat.Id,
                 query.Message.MessageId,
-                replyMarkup: null,
+                replyMarkup: new InlineKeyboardMarkup( new []
+                {
+                    InlineKeyboardButton.WithCallbackData("Подтверждено", "noop")
+                }),
                 cancellationToken: ct);
         }
-        else if (query.Data.StartsWith("admin_decline:"))
+        else if (query.Data.StartsWith("decline_lesson:"))
         {
-            var lessonId = Guid.Parse(query.Data["admin_confirm".Length..]);
+            var lessonId = Guid.Parse(query.Data["decline_lesson:".Length..]);
             var lesson = await _lessonService.GetLessonByIdAsync(lessonId);
 
             if (lesson is null || !_userService.IsAdmin(user))
@@ -131,7 +175,7 @@ public class CallbackQueryHandler
                 replyMarkup: null,
                 cancellationToken: ct);
         }
-        else if (query.Data.StartsWith("admin_propose:"))
+        else if (query.Data.StartsWith("propose_lesson:"))
         {
             // Заглушка для предложения другого времени
             await bot.AnswerCallbackQuery(query.Id, "Функция предложения другого времени в разработке", cancellationToken: ct);
