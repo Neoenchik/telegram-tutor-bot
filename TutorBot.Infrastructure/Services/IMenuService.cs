@@ -26,10 +26,14 @@ public interface IMenuService
     /// <param name="start">Дата начала календаря (UTC).</param>
     /// <param name="days">Количество дней, отображаемых в календаре.</param>
     InlineKeyboardMarkup GetCalendarKeyboard(DateTime start, int days);
-    
+
     /// <summary>
-    /// Возвращает клавиатуру с временами для выбранной даты.
+    /// Формирует клавиатуру с доступными временными слотами для указанной даты.
     /// </summary>
-    /// <param name="selectedDate">Дата, для которой подбираются временные слоты.</param>
-    InlineKeyboardMarkup GetTimesKeyboard(DateTime selectedDate);
+    /// <param name="date">Дата, для которой подбираются временные слоты.</param>
+    /// <param name="lessonService">Сервис для получения списка свободных слотов.</param>
+    /// <param name="ct">Токен отмены операции.</param>
+    Task<InlineKeyboardMarkup> GetTimesKeyboard(DateOnly date,
+        LessonService lessonService,
+        CancellationToken ct);
 }

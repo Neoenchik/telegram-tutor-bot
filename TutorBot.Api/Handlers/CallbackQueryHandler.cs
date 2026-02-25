@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Runtime.InteropServices.JavaScript;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.ReplyMarkups;
@@ -184,7 +183,8 @@ public class CallbackQueryHandler
         {
             string dateStr =  query.Data["date:".Length..];
 
-            if (!DateTime.TryParse(dateStr, out var selectedDate))
+            // преобразуем строку UTC-дату в DateOnly (игнорируем время)
+            if (!DateOnly.TryParse(dateStr, CultureInfo.InvariantCulture, DateTimeStyles.None, out var selectedDate))
             {
                 await bot.AnswerCallbackQuery(query.Id, "Неверная дата",true, cancellationToken: ct);
                 return;
@@ -192,7 +192,7 @@ public class CallbackQueryHandler
             //переводим в следующее состояние
             await _userService.UpdateStateAsync(user.Id, ConversationState.ChoosingTimeForBooking, dateStr);
             
-            var timesKeyboard = _menuService.GetTimesKeyboard(selectedDate);
+            var timesKeyboard = await _menuService.GetTimesKeyboard(selectedDate, _lessonService, ct);
             
             await bot.SendMessage(
                 query.Message!.Chat.Id,

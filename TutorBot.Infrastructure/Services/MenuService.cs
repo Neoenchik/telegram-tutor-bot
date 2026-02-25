@@ -1,5 +1,6 @@
 using Telegram.Bot.Types.ReplyMarkups;
 using TutorBot.Domain.Entities;
+using TutorBot.Infrastructure.Extensions;
 
 namespace TutorBot.Infrastructure.Services;
 
@@ -94,17 +95,36 @@ public class MenuService : IMenuService
 
     /// <summary>
     /// Формирует клавиатуру с доступными временными слотами для указанной даты.
+    /// Недоступные слоты (занятые или заблокированные) автоматически исключаются.
     /// </summary>
-    /// <param name="selectedDate">Дата, для которой требуются временные кнопки.</param>
-    public InlineKeyboardMarkup GetTimesKeyboard(DateTime selectedDate)
+    /// <param name="date">Дата, для которой подбираются временные слоты.</param>
+    /// <param name="lessonService">Сервис для получения списка свободных слотов.</param>
+    /// <param name="ct">Токен отмены операции.</param>
+    public async Task<InlineKeyboardMarkup> GetTimesKeyboard(DateOnly date,
+        LessonService lessonService,
+        CancellationToken ct)
     {
+        var slots = await lessonService.GetAvailableSlotsForDateAsync(date, ct);
+
+        if (!slots.Any())
+        {
+            return new InlineKeyboardMarkup(new[]
+            {   
+                new[] { InlineKeyboardButton.WithCallbackData("Нет свободных слотов", "noop")},
+                new[] { InlineKeyboardButton.WithCallbackData("❌ Отмена", "cancel")}
+            });
+        }
+        
         var buttons = new List<InlineKeyboardButton[]>();
         var row = new List<InlineKeyboardButton>();
 
-        for (int t = 8; t < 24; t++)
+        foreach (var slot in slots)
         {
-            var callback = $"time:{selectedDate:yyyy-MM-dd}_{t}:00";
-            row.Add(InlineKeyboardButton.WithCallbackData($"{t}:00", callback));
+            var mskTime = slot.ToTimeZone("Europe/Moscow");
+            var text = date.ToString("HH:mm");
+            var callback = $"time:{slot:yyyy-MM-ddTHH:mm:ssZ}";
+            
+            row.Add(InlineKeyboardButton.WithCallbackData(text, callback));
             
             if (row.Count == 3)
             {
